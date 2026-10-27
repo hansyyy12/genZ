@@ -19,7 +19,7 @@ import {
 
 export const LiveMeetingView: React.FC = () => {
   const { user } = useAuth();
-  const { courses, enrollments, meetings, createMeeting } = useData();
+  const { courses, enrollments, meetings, createMeeting, isEnrolledInCourse } = useData();
 
   const isLecturer = user?.role === 'lecturer';
   const [activeRoom, setActiveRoom] = useState<LiveMeeting | null>(null);
@@ -42,8 +42,8 @@ export const LiveMeetingView: React.FC = () => {
   const streamRef = useRef<MediaStream | null>(null);
 
   const myCourses = isLecturer
-    ? courses.filter((c) => c.ownerId === user?.uid)
-    : courses.filter((c) => enrollments.some((e) => e.studentId === user?.uid && e.courseId === c.id));
+    ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
+    : courses.filter((c) => isEnrolledInCourse(c));
   const myCourseCodes = new Set(myCourses.map((c) => c.code.toUpperCase()));
 
   const filteredMeetings = meetings.filter((m) => myCourseCodes.has(m.courseCode.toUpperCase()));

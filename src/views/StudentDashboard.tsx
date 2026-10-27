@@ -25,13 +25,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onOpenCourseDetail,
 }) => {
   const { user } = useAuth();
-  const { courses, enrollments, announcements, assignments, quizzes, cycleData, activeBudgetPlan } =
+  const { courses, enrollments, announcements, assignments, quizzes, cycleData, activeBudgetPlan, isEnrolledInCourse } =
     useData();
 
   // Find courses student is enrolled in
-  const myEnrollments = enrollments.filter((e) => e.studentId === user?.uid);
-  const myEnrolledCourseIds = new Set(myEnrollments.map((e) => e.courseId));
-  const myCourses = courses.filter((c) => myEnrolledCourseIds.has(c.id));
+  const myCourses = courses.filter((c) => isEnrolledInCourse(c));
+  const myEnrollments = enrollments.filter((e) => isEnrolledInCourse({ id: e.courseId, code: e.courseCode } as any));
 
   // Today's classes
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });

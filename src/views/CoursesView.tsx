@@ -40,6 +40,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     createCourse,
     updateCourse,
     deleteCourse,
+    isEnrolledInCourse,
+    ensureCourseVirtualRoom,
     registerStudentCourse,
   } = useData();
 
@@ -71,17 +73,43 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const [regPhone, setRegPhone] = useState(user?.phone || '');
   const [regStatusMsg, setRegStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  React.useEffect(() => {
+    if (user) {
+      if (user.name) setRegFullName(user.name);
+      if (user.indexNo) setRegIndexNo(user.indexNo);
+      if (user.level) setRegLevel(user.level);
+      if (user.phone) setRegPhone(user.phone);
+    }
+  }, [user]);
+
+  const handleQuickRegister = async (codeToRegister: string) => {
+    setRegStatusMsg(null);
+    setSaveLoading(true);
+    const res = await registerStudentCourse(
+      codeToRegister,
+      regFullName || user?.name || 'Student',
+      regIndexNo || user?.indexNo || 'UE12345',
+      regLevel || user?.level || 'Level 100',
+      regPhone || user?.phone || ''
+    );
+    setSaveLoading(false);
+    if (res.success) {
+      setRegStatusMsg({ type: 'success', text: res.message });
+      setRegCode('');
+    } else {
+      setRegStatusMsg({ type: 'error', text: res.message });
+    }
+  };
+
   // Student enrollments
-  const myEnrollments = enrollments.filter((e) => e.studentId === user?.uid);
-  const myEnrolledIds = new Set(myEnrollments.map((e) => e.courseId));
   const myCourses = isAdmin
     ? courses
     : isLecturer
     ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
-    : courses.filter((c) => myEnrolledIds.has(c.id));
+    : courses.filter((c) => isEnrolledInCourse(c));
 
   const availableToRegister = !isLecturer
-    ? courses.filter((c) => !myEnrolledIds.has(c.id))
+    ? courses.filter((c) => !isEnrolledInCourse(c))
     : [];
 
   const [saveLoading, setSaveLoading] = useState(false);
@@ -229,7 +257,24 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </span>
           </div>
 
-          <h1 className="text-2xl md:text-3xl font-extrabold">{activeCourse.name}</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-extrabold">{activeCourse.name}</h1>
+              <p className="mt-1 text-xs md:text-sm text-blue-200/80">
+                Lecturer: {activeCourse.ownerName || 'Course Instructor'} · {activeCourse.semester || 'First Semester'}
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                await ensureCourseVirtualRoom(activeCourse);
+                onSelectTab(isLecturer ? 'lecturer-meet' : 'student-meet');
+              }}
+              className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-amber-400/20 transition cursor-pointer self-start sm:self-auto"
+            >
+              <Video className="w-4 h-4 text-slate-900" />
+              Join Live VC Class
+            </button>
+          </div>
           <p className="mt-1 text-xs md:text-sm text-blue-200/80">
             Lecturer: {activeCourse.ownerName || 'Course Instructor'} · {activeCourse.semester || 'First Semester'}
           </p>
@@ -388,6 +433,44 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </div>
           )}
 
+          {availableToRegister.length > 0 && (
+            <div className="mb-6 p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-blue-900 dark:text-blue-200 uppercase tracking-wider">
+                  Available Campus Courses (1-Click Register)
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                  {availableToRegister.length} Available
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {availableToRegister.map((ac) => (
+                  <div
+                    key={ac.id}
+                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-xs"
+                  >
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[150px]">
+                        {ac.name}
+                      </h4>
+                      <span className="font-mono text-[11px] font-extrabold text-blue-600 dark:text-blue-400">
+                        {ac.code}
+                      </span>
+                      <span className="text-[10px] text-slate-400 ml-1.5">({ac.level})</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={saveLoading}
+                      onClick={() => handleQuickRegister(ac.code)}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Register
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <form onSubmit={handleRegisterCourse} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>

@@ -4,7 +4,7 @@ import { useData } from '../context/DataContext';
 
 export const StudentMarksView: React.FC = () => {
   const { user } = useAuth();
-  const { courses, enrollments, quizzes, quizAttempts, assignments, submissions } = useData();
+  const { courses, enrollments, quizzes, quizAttempts, assignments, submissions, isEnrolledInCourse } = useData();
 
   const myEnrollments =
     user?.role === 'admin' && !enrollments.some((e) => e.studentId === user?.uid)

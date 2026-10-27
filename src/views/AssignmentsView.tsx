@@ -28,6 +28,7 @@ export const AssignmentsView: React.FC = () => {
     postAssignment,
     submitAssignment,
     gradeSubmission,
+    isEnrolledInCourse,
   } = useData();
 
   const isAdmin = user?.role === 'admin';
@@ -63,7 +64,7 @@ export const AssignmentsView: React.FC = () => {
     ? courses
     : isLecturer
     ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
-    : courses.filter((c) => enrollments.some((e) => e.studentId === user?.uid && e.courseId === c.id));
+    : courses.filter((c) => isEnrolledInCourse(c));
   const myCourseCodes = new Set(myCourses.map((c) => c.code.toUpperCase()));
 
   const filteredAssignments = isAdmin

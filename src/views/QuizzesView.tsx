@@ -27,6 +27,7 @@ export const QuizzesView: React.FC = () => {
     submitQuizAttempt,
     gradeManualQuizAttempt,
     setQuizRelease,
+    isEnrolledInCourse,
   } = useData();
 
   const isLecturer = user?.role === 'lecturer';
@@ -70,7 +71,7 @@ export const QuizzesView: React.FC = () => {
     ? courses
     : isLecturer
     ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
-    : courses.filter((c) => enrollments.some((e) => e.studentId === user?.uid && e.courseId === c.id));
+    : courses.filter((c) => isEnrolledInCourse(c));
   const myCourseCodes = new Set(myCourses.map((c) => c.code.toUpperCase()));
 
   const filteredQuizzes = isAdmin

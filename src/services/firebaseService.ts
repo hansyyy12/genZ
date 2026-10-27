@@ -194,27 +194,42 @@ export function subscribeCourses(
   );
 }
 
-export async function findCourseByCode(code: string): Promise<Course | null> {
-  const clean = code.trim().toUpperCase();
+export async function getAllCourses(): Promise<Course[]> {
   const path = 'courses';
   try {
-    const q = query(collection(db, path), where('code', '==', clean));
+    const snap = await getDocs(collection(db, path));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Course));
+  } catch (error) {
+    console.warn('getAllCourses error:', error);
+    return [];
+  }
+}
+
+export async function findCourseByCode(code: string): Promise<Course | null> {
+  const raw = code.trim().toUpperCase();
+  const cleanAlpha = raw.replace(/[^A-Z0-9]/g, '');
+  const path = 'courses';
+  try {
+    // 1. Direct equality query
+    const q = query(collection(db, path), where('code', '==', raw));
     const snap = await getDocs(q);
     if (!snap.empty) {
       const d = snap.docs[0];
       return { id: d.id, ...d.data() } as Course;
     }
-    // Fallback: search all courses in case code casing differed in Firestore
+    // 2. Scan all courses in case of punctuation/case mismatch (e.g. CRS-366 vs CRS 366 vs crs366)
     const allSnap = await getDocs(collection(db, path));
-    const found = allSnap.docs.find(
-      (doc) => (doc.data().code || '').trim().toUpperCase() === clean
-    );
+    const found = allSnap.docs.find((doc) => {
+      const c = (doc.data().code || '').trim().toUpperCase();
+      const alpha = c.replace(/[^A-Z0-9]/g, '');
+      return c === raw || (cleanAlpha.length > 0 && alpha === cleanAlpha);
+    });
     if (found) {
       return { id: found.id, ...found.data() } as Course;
     }
     return null;
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
+    console.warn('findCourseByCode warning (fallback to local state):', error);
     return null;
   }
 }

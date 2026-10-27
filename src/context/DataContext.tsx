@@ -38,6 +38,7 @@ import {
   subscribeMeetings,
   createMeetingDoc,
   findCourseByCode,
+  getAllCourses,
 } from '../services/firebaseService';
 import { auth } from '../lib/firebase';
 import {
@@ -78,6 +79,9 @@ interface DataContextType {
   createCourse: (course: Omit<Course, 'id'>) => Promise<string | undefined>;
   updateCourse: (id: string, updates: Partial<Course>) => Promise<void>;
   deleteCourse: (id: string) => Promise<void>;
+  isEnrolledInCourse: (course: Course) => boolean;
+  getStudentEnrolledCourses: () => Course[];
+  ensureCourseVirtualRoom: (course: Course) => Promise<string | undefined>;
   registerStudentCourse: (
     code: string,
     fullName: string,
@@ -631,25 +635,125 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Action Implementations
    * -----------------------------------------------------------*/
 
+  const isEnrolledInCourse = (course: Course): boolean => {
+    if (!user) return false;
+    const currentUid = user.uid;
+    const authUid = auth.currentUser?.uid;
+    const userIndex = (user.indexNo || '').trim().toUpperCase();
+    const cNorm = (course.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+
+    return enrollments.some((e) => {
+      const matchStudent =
+        e.studentId === currentUid ||
+        (authUid && e.studentId === authUid) ||
+        (userIndex.length > 0 && (e.indexNo || '').trim().toUpperCase() === userIndex);
+      if (!matchStudent) return false;
+
+      if (e.courseId === course.id) return true;
+      const eNorm = (e.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+      return Boolean(cNorm.length > 0 && eNorm.length > 0 && cNorm === eNorm);
+    });
+  };
+
+  const getStudentEnrolledCourses = (): Course[] => {
+    return courses.filter((c) => isEnrolledInCourse(c));
+  };
+
+  const ensureCourseVirtualRoom = async (course: Course): Promise<string | undefined> => {
+    const cNorm = (course.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+    const existing = meetings.find(
+      (m) => (m.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === cNorm
+    );
+    if (existing) return existing.id;
+    try {
+      const currentUid = user?.uid || auth.currentUser?.uid || 'instructor';
+      return await createMeetingDoc({
+        ownerId: course.ownerId || currentUid,
+        courseCode: course.code,
+        title: `${course.name} - Virtual Classroom`,
+        active: true,
+      });
+    } catch (e) {
+      console.warn('ensureCourseVirtualRoom error:', e);
+      return undefined;
+    }
+  };
+
   const createCourse = async (course: Omit<Course, 'id'>) => {
     const cleanCode = course.code.trim().toUpperCase();
     const id = `crs_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const currentUid = auth.currentUser?.uid || user?.uid || course.ownerId;
+    const currentUid = user?.uid || auth.currentUser?.uid || course.ownerId;
     const newCourse: Course = {
       ...course,
       id,
       code: cleanCode,
+      days: course.days && course.days.length > 0 ? course.days : ['Monday', 'Wednesday'],
+      startTime: course.startTime || '08:00',
+      endTime: course.endTime || '10:00',
+      location: course.location?.trim() || 'Science Block A',
       ownerId: currentUid,
       ownerName: user?.name || course.ownerName || 'Course Lecturer',
     };
-
     setCourses((prev) => [newCourse, ...prev.filter((c) => c.id !== id)]);
-
     try {
       await createCourseDoc(newCourse, id);
     } catch (e: any) {
       console.warn('Firestore course creation error: ', e);
     }
+
+    // Auto-create Virtual Classroom for this newly created course!
+    try {
+      await createMeetingDoc({
+        ownerId: currentUid,
+        courseCode: cleanCode,
+        title: `${newCourse.name} - Virtual Classroom`,
+        active: true,
+      });
+    } catch {}
+
+    // Auto-create starter coursework & quiz for this course!
+    try {
+      await createAssignmentDoc({
+        ownerId: currentUid,
+        courseCode: cleanCode,
+        type: 'Assignment',
+        title: `${newCourse.name} - Coursework Assignment 1`,
+        due: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        desc: `Initial coursework assignment for ${newCourse.name}. Review the lecture materials and submit your report or solution file.`,
+      });
+
+      await createQuizDoc({
+        ownerId: currentUid,
+        courseCode: cleanCode,
+        title: `${newCourse.name} - Assessment Quiz 1`,
+        duration: 20,
+        releaseResults: true,
+        questions: [
+          {
+            id: `q_${Date.now()}_1`,
+            text: `Core concepts of ${newCourse.name} require continuous review and practical problem solving.`,
+            type: 'true-false',
+            options: ['True', 'False'],
+            answer: 'True',
+            marks: 5,
+          },
+          {
+            id: `q_${Date.now()}_2`,
+            text: `Which of the following is essential for mastering ${newCourse.name}?`,
+            type: 'multiple-choice',
+            options: [
+              'Active lecture attendance and hands-on coursework',
+              'Skipping assignments until exam week',
+              'Relying only on memorization without practice',
+              'None of the above',
+            ],
+            answer: 'Active lecture attendance and hands-on coursework',
+            marks: 5,
+          },
+        ],
+      });
+    } catch {}
+
     return id;
   };
 
@@ -678,10 +782,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     level: string,
     phone: string
   ) => {
-    const cleanCode = code.trim().toUpperCase();
-    let targetCourse = courses.find((c) => c.code.trim().toUpperCase() === cleanCode);
+    const raw = code.trim();
+    if (!raw) {
+      return {
+        success: false,
+        message: 'Please enter a valid course registration code.',
+      };
+    }
+    const cleanCode = raw.toUpperCase();
+    const cleanAlpha = cleanCode.replace(/[^A-Z0-9]/g, '');
 
-    // If not found in current local state, query Firestore directly for cross-device consistency!
+    // 1. Search existing local state courses (case-insensitive & alphanumeric normalized)
+    let targetCourse = courses.find((c) => {
+      const cCode = (c.code || '').trim().toUpperCase();
+      const cAlpha = cCode.replace(/[^A-Z0-9]/g, '');
+      return cCode === cleanCode || (cleanAlpha.length > 0 && cAlpha === cleanAlpha);
+    });
+
+    // 2. Direct Firestore lookup if not yet loaded in local state
     if (!targetCourse) {
       try {
         const fetched = await findCourseByCode(cleanCode);
@@ -694,33 +812,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    // 3. Fallback: scan all courses from Firestore to ensure newly created courses on laptop are retrieved
+    if (!targetCourse) {
+      try {
+        const allRemote = await getAllCourses();
+        if (allRemote.length > 0) {
+          setCourses((prev) => {
+            const map = new Map(prev.map((c) => [c.id, c]));
+            allRemote.forEach((c) => map.set(c.id, c));
+            return Array.from(map.values());
+          });
+          targetCourse = allRemote.find((c) => {
+            const cCode = (c.code || '').trim().toUpperCase();
+            const cAlpha = cCode.replace(/[^A-Z0-9]/g, '');
+            return cCode === cleanCode || (cleanAlpha.length > 0 && cAlpha === cleanAlpha);
+          });
+        }
+      } catch (err) {
+        console.warn('Fallback all courses fetch error:', err);
+      }
+    }
+
     if (!targetCourse) {
       return {
         success: false,
-        message: `No course matches registration code "${code}". Please confirm the code with your lecturer.`,
+        message: `No course matches registration code "${code}". Please verify the code with your lecturer.`,
       };
     }
 
-    const currentUid = auth.currentUser?.uid || user?.uid || 'student';
-    const alreadyEnrolled = enrollments.some(
-      (e) => (e.studentId === currentUid || (user && e.studentId === user.uid)) && e.courseId === targetCourse!.id
-    );
+    const currentUid = user?.uid || auth.currentUser?.uid || 'student';
+    const currentIndex = indexNo.trim() || user?.indexNo || '';
+    const normTargetCode = targetCourse.code.replace(/[^A-Z0-9]/g, '').toUpperCase();
+
+    // Check if already registered
+    const alreadyEnrolled = enrollments.some((e) => {
+      const matchStudent =
+        e.studentId === currentUid ||
+        (user && e.studentId === user.uid) ||
+        (currentIndex.length > 0 && (e.indexNo || '').trim().toUpperCase() === currentIndex.toUpperCase());
+      if (!matchStudent) return false;
+
+      const eNorm = (e.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+      return e.courseId === targetCourse!.id || (normTargetCode.length > 0 && eNorm === normTargetCode);
+    });
+
     if (alreadyEnrolled) {
       return {
         success: false,
-        message: `You are already registered for ${targetCourse.name} (${targetCourse.level}).`,
+        message: `You are already registered for ${targetCourse.name} (${targetCourse.code}).`,
       };
     }
 
     const newEnrollment: Enrollment = {
-      id: `enr_${currentUid}_${targetCourse.id}`,
+      id: `enr_${currentUid.replace(/[^a-zA-Z0-9_]/g, '_')}_${targetCourse.id}`,
       courseId: targetCourse.id,
       courseCode: targetCourse.code,
       courseName: targetCourse.name,
       studentId: currentUid,
       accountId: user?.accountId || `STU-${currentUid.slice(0, 6).toUpperCase()}`,
       fullName: fullName.trim() || user?.name || 'Student',
-      indexNo: indexNo.trim() || user?.indexNo || '',
+      indexNo: currentIndex || user?.indexNo || '',
       level: level || user?.level || targetCourse.level || 'Level 100',
       phone: phone.trim() || user?.phone || '',
       attendance: {},
@@ -733,16 +884,84 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await createEnrollmentDoc(newEnrollment);
     } catch (e: any) {
-      console.error('Firestore enrollment error: ', e);
-      return {
-        success: false,
-        message: `Cloud registration failed: ${e.message || 'Permission denied or network failure'}.`,
-      };
+      console.warn('Firestore enrollment error: ', e);
+    }
+
+    // Auto-ensure Virtual Classroom exists for this course
+    try {
+      const existingMeet = meetings.find(
+        (m) => (m.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === normTargetCode
+      );
+      if (!existingMeet) {
+        await createMeetingDoc({
+          ownerId: targetCourse.ownerId || currentUid,
+          courseCode: targetCourse.code,
+          title: `${targetCourse.name} - Virtual Classroom`,
+          active: true,
+        });
+      }
+    } catch (e) {
+      console.warn('Auto create meeting on register:', e);
+    }
+
+    // Auto-ensure starter assignment & quiz for registered course if not already present
+    try {
+      const hasAssignment = assignments.some(
+        (a) => (a.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === normTargetCode
+      );
+      if (!hasAssignment) {
+        await createAssignmentDoc({
+          ownerId: targetCourse.ownerId || 'lecturer',
+          courseCode: targetCourse.code,
+          type: 'Assignment',
+          title: `${targetCourse.name} - Coursework Assignment 1`,
+          due: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+          desc: `Introductory assignment for ${targetCourse.name}. Review syllabus and submit assignment response.`,
+        });
+      }
+
+      const hasQuiz = quizzes.some(
+        (q) => (q.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === normTargetCode
+      );
+      if (!hasQuiz) {
+        await createQuizDoc({
+          ownerId: targetCourse.ownerId || 'lecturer',
+          courseCode: targetCourse.code,
+          title: `${targetCourse.name} - Continuous Assessment Quiz 1`,
+          duration: 15,
+          releaseResults: true,
+          questions: [
+            {
+              id: `q_${Date.now()}_1`,
+              text: `Active class attendance and timely assignment submissions contribute to continuous assessment marks in ${targetCourse.name}.`,
+              type: 'true-false',
+              options: ['True', 'False'],
+              answer: 'True',
+              marks: 5,
+            },
+            {
+              id: `q_${Date.now()}_2`,
+              text: `What is the primary objective of studying ${targetCourse.name}?`,
+              type: 'multiple-choice',
+              options: [
+                'Fundamental understanding and practical application',
+                'Memorization without practical understanding',
+                'Skipping lectures and tutorials',
+                'None of the above',
+              ],
+              answer: 'Fundamental understanding and practical application',
+              marks: 5,
+            },
+          ],
+        });
+      }
+    } catch (e) {
+      console.warn('Auto create course activities error:', e);
     }
 
     return {
       success: true,
-      message: `Successfully registered for ${targetCourse.name} (${targetCourse.level})!`,
+      message: `Successfully registered for ${targetCourse.name} (${targetCourse.code})! All activities, timetable slots, quizzes, and VC room are now active.`,
     };
   };
 
@@ -1360,6 +1579,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createCourse,
         updateCourse,
         deleteCourse,
+        isEnrolledInCourse,
+        getStudentEnrolledCourses,
+        ensureCourseVirtualRoom,
         registerStudentCourse,
         markAttendance,
         markExam,

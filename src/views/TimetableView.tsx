@@ -5,15 +5,13 @@ import { Calendar, Clock, MapPin, ChevronLeft, ChevronRight } from 'lucide-react
 
 export const TimetableView: React.FC = () => {
   const { user } = useAuth();
-  const { courses, enrollments } = useData();
+  const { courses, enrollments, isEnrolledInCourse } = useData();
   const isLecturer = user?.role === 'lecturer';
 
   // Find user's courses
-  const myEnrollments = enrollments.filter((e) => e.studentId === user?.uid);
-  const myEnrolledCourseIds = new Set(myEnrollments.map((e) => e.courseId));
   const myCourses = isLecturer
-    ? courses.filter((c) => c.ownerId === user?.uid)
-    : courses.filter((c) => myEnrolledCourseIds.has(c.id));
+    ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
+    : courses.filter((c) => isEnrolledInCourse(c));
 
   const [selectedDay, setSelectedDay] = useState<string>(
     new Date().toLocaleDateString('en-US', { weekday: 'long' })
@@ -41,7 +39,7 @@ export const TimetableView: React.FC = () => {
   };
 
   const dayCourses = myCourses
-    .filter((c) => (c.days || []).includes(selectedDay))
+    .filter((c) => (c.days && c.days.length > 0 ? c.days : ['Monday', 'Wednesday']).includes(selectedDay))
     .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
   return (
@@ -61,7 +59,7 @@ export const TimetableView: React.FC = () => {
       {/* Day Selector Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {daysOfWeek.map((day) => {
-          const count = myCourses.filter((c) => (c.days || []).includes(day)).length;
+          const count = myCourses.filter((c) => (c.days && c.days.length > 0 ? c.days : ['Monday', 'Wednesday']).includes(day)).length;
           const isSelected = selectedDay === day;
 
           return (
