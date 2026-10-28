@@ -58,20 +58,27 @@ export const AssignmentsView: React.FC = () => {
   const [activeSubmission, setActiveSubmission] = useState<Submission | null>(null);
   const [gradeMark, setGradeMark] = useState('');
   const [gradeFeedback, setGradeFeedback] = useState('');
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
+  const [submitModalError, setSubmitModalError] = useState<string | null>(null);
+  const [noSubsNotice, setNoSubsNotice] = useState<string | null>(null);
 
-  // Relevant assignments
+  // Relevant courses and assignments
   const myCourses = isAdmin
     ? courses
     : isLecturer
-    ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
+    ? courses.filter((c) => c.ownerId === user?.uid || c.ownerName === user?.name || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
     : courses.filter((c) => isEnrolledInCourse(c));
-  const myCourseCodes = new Set(myCourses.map((c) => c.code.toUpperCase()));
 
-  const filteredAssignments = isAdmin
-    ? assignments
-    : myCourses.length > 0
-    ? assignments.filter((a) => myCourseCodes.has(a.courseCode.toUpperCase()))
-    : assignments;
+  const myNormCodes = new Set(myCourses.map((c) => (c.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase()));
+
+  const filteredAssignments = assignments.filter((a) => {
+    const aNorm = (a.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+    if (selectedCourseFilter !== 'all') {
+      const filterNorm = selectedCourseFilter.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      if (aNorm !== filterNorm) return false;
+    }
+    return isAdmin || myNormCodes.has(aNorm);
+  });
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,19 +111,26 @@ export const AssignmentsView: React.FC = () => {
 
   const handleSubmitSolution = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeAssignment || !selectedFileName) {
-      alert('Please attach a document or solution file.');
+    setSubmitModalError(null);
+    if (!activeAssignment) return;
+    if (!selectedFileName && !submissionNotes.trim()) {
+      setSubmitModalError('Please attach a document or type your solution notes below.');
       return;
     }
+    const finalFileName = selectedFileName || `${activeAssignment.title.replace(/[^a-zA-Z0-9_]/g, '_')}_Solution.txt`;
+    const finalFileType = selectedFileType || 'txt';
+    const finalDataUrl = selectedFileDataUrl || (submissionNotes ? `data:text/plain;charset=utf-8,${encodeURIComponent(submissionNotes)}` : '');
+
     await submitAssignment(
       activeAssignment.id,
-      selectedFileName,
-      selectedFileType,
-      selectedFileDataUrl,
+      finalFileName,
+      finalFileType,
+      finalDataUrl,
       submissionNotes
     );
     setSubmitModalOpen(false);
     setSelectedFileName('');
+    setSelectedFileDataUrl('');
     setSubmissionNotes('');
   };
 
@@ -186,6 +200,53 @@ export const AssignmentsView: React.FC = () => {
             )}
           </div>
 
+      {/* Course Filter Bar */}
+      {myCourses.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="font-bold text-slate-500 whitespace-nowrap">Filter Course:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedCourseFilter('all')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
+              selectedCourseFilter === 'all'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            All Courses ({filteredAssignments.length})
+          </button>
+          {myCourses.map((c) => {
+            const cNorm = (c.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+            const count = assignments.filter((a) => (a.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === cNorm).length;
+            const isSelected = selectedCourseFilter === c.code;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedCourseFilter(c.code)}
+                className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <span>{c.name}</span>
+                <span className="font-mono text-[10px] opacity-75">({c.code})</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 text-[10px]">
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {noSubsNotice && (
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+          {noSubsNotice}
+        </div>
+      )}
+
       {/* Assignments List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredAssignments.length === 0 ? (
@@ -196,7 +257,7 @@ export const AssignmentsView: React.FC = () => {
           filteredAssignments.map((asg) => {
             const courseSubs = submissions.filter((s) => s.assignmentId === asg.id);
             const mySubmission = submissions.find(
-              (s) => s.assignmentId === asg.id && s.studentId === user?.uid
+              (s) => s.assignmentId === asg.id && (s.studentId === user?.uid || (user?.name && s.studentName === user.name))
             );
 
             return (
@@ -243,7 +304,8 @@ export const AssignmentsView: React.FC = () => {
                             setGradeFeedback(courseSubs[0].feedback || '');
                             setGradingModalOpen(true);
                           } else {
-                            alert('No student submissions yet for this assignment.');
+                            setNoSubsNotice(`No student submissions received yet for "${asg.title}".`);
+                            setTimeout(() => setNoSubsNotice(null), 3000);
                           }
                         }}
                         className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold transition"
@@ -499,14 +561,18 @@ export const AssignmentsView: React.FC = () => {
               Course: {activeAssignment.courseCode} · Due {activeAssignment.due}
             </p>
 
+            {submitModalError && (
+              <div className="p-3 mb-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs">
+                {submitModalError}
+              </div>
+            )}
             <form onSubmit={handleSubmitSolution} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Choose Document File (.docx, .pdf, .pptx)
+                  Attach Document / Solution File (Optional if typing solution below)
                 </label>
                 <input
                   type="file"
-                  required
                   accept=".pdf,.docx,.pptx,.txt"
                   onChange={handleFileSelect}
                   className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"

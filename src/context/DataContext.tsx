@@ -37,6 +37,8 @@ import {
   deletePersonalTaskDoc,
   subscribeMeetings,
   createMeetingDoc,
+  subscribeMeetingMessages,
+  sendMeetingMessageDoc,
   findCourseByCode,
   getAllCourses,
 } from '../services/firebaseService';
@@ -156,7 +158,11 @@ interface DataContextType {
   deletePersonalTask: (id: string) => Promise<void>;
 
   // Live Meetings
-  createMeeting: (title: string, courseCode: string) => Promise<string | undefined>;
+  createMeeting: (
+    titleOrData: string | Omit<LiveMeeting, 'id'>,
+    courseCode?: string
+  ) => Promise<string | undefined>;
+  sendMeetingMessage: (meetingId: string, text: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -563,8 +569,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         )
       );
 
-      if (firebaseUser) {
-        const authUid = firebaseUser.uid;
+      const activeUid = user?.uid || firebaseUser?.uid || auth.currentUser?.uid;
+      if (activeUid) {
+        const authUid = activeUid;
         unsubs.push(
           subscribeBudgetPlans(
             authUid,
@@ -583,7 +590,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               }
             },
-            (err) => console.warn('Budget plans sync offline:', err.message)
+            (err) => {
+              console.warn('Budget plans sync offline:', err.message);
+              const def = initialBudgetPlan(authUid);
+              setBudgetPlans((prev) => (prev.length ? prev : [def]));
+              setActivePlanId((prev) => prev || def.id);
+            }
           )
         );
 
@@ -601,7 +613,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setCycleData(data);
               }
             },
-            (err) => console.warn('Cycle data sync offline:', err.message)
+            (err) => {
+              console.warn('Cycle data sync offline:', err.message);
+              const def = initialCycleData(authUid);
+              setCycleData((prev) => prev || def);
+            }
           )
         );
 
@@ -624,7 +640,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [firebaseUser]);
+  }, [firebaseUser, user?.uid]);
 
   const activeBudgetPlan = useMemo(() => {
     if (!budgetPlans.length) return initialBudgetPlan(user?.uid || 'guest');
@@ -983,12 +999,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
     );
 
-    if (firebaseUser) {
-      try {
-        await updateEnrollmentAttendance(enrollmentId, date, status);
-      } catch (e) {
-        console.warn('Firestore attendance error: ', e);
-      }
+    try {
+      await updateEnrollmentAttendance(enrollmentId, date, status);
+    } catch (e) {
+      console.warn('Firestore attendance error: ', e);
     }
   };
 
@@ -1017,12 +1031,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateCourseSettings = async (courseId: string, updates: Partial<Course>) => {
     setCourses((prev) => prev.map((c) => (c.id === courseId ? { ...c, ...updates } : c)));
-    if (firebaseUser) {
-      try {
-        await updateCourseDoc(courseId, updates);
-      } catch (e) {
-        console.warn('Firestore course settings error: ', e);
-      }
+    try {
+      await updateCourseDoc(courseId, updates);
+    } catch (e) {
+      console.warn('Firestore course settings error: ', e);
     }
   };
 
@@ -1031,12 +1043,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newAnn: Announcement = { ...data, id, createdAt: new Date().toISOString() };
     setAnnouncements((prev) => [newAnn, ...prev]);
 
-    if (firebaseUser) {
-      try {
-        await createAnnouncementDoc(data);
-      } catch (e) {
-        console.warn('Firestore announcement error: ', e);
-      }
+    try {
+      await createAnnouncementDoc(data);
+    } catch (e) {
+      console.warn('Firestore announcement error: ', e);
     }
     return id;
   };
@@ -1046,12 +1056,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newAsg: Assignment = { ...data, id, createdAt: new Date().toISOString() };
     setAssignments((prev) => [newAsg, ...prev]);
 
-    if (firebaseUser) {
-      try {
-        await createAssignmentDoc(data);
-      } catch (e) {
-        console.warn('Firestore assignment error: ', e);
-      }
+    try {
+      await createAssignmentDoc(data, id);
+    } catch (e) {
+      console.warn('Firestore assignment error: ', e);
     }
     return id;
   };
@@ -1083,12 +1091,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setSubmissions((prev) => [newSub, ...prev]);
 
-    if (firebaseUser) {
-      try {
-        await createSubmissionDoc(newSub);
-      } catch (e) {
-        console.warn('Firestore submission error: ', e);
-      }
+    try {
+      await createSubmissionDoc(newSub);
+    } catch (e) {
+      console.warn('Firestore submission error: ', e);
     }
     return id;
   };
@@ -1097,12 +1103,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSubmissions((prev) =>
       prev.map((s) => (s.id === id ? { ...s, mark: String(mark), feedback, status: 'Graded' } : s))
     );
-    if (firebaseUser) {
-      try {
-        await gradeSubmissionDoc(id, mark, feedback);
-      } catch (e) {
-        console.warn('Firestore grade error: ', e);
-      }
+    try {
+      await gradeSubmissionDoc(id, mark, feedback);
+    } catch (e) {
+      console.warn('Firestore grade error: ', e);
     }
   };
 
@@ -1111,12 +1115,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newQz: Quiz = { ...data, id, createdAt: new Date().toISOString() };
     setQuizzes((prev) => [newQz, ...prev]);
 
-    if (firebaseUser) {
-      try {
-        await createQuizDoc(data);
-      } catch (e) {
-        console.warn('Firestore quiz error: ', e);
-      }
+    try {
+      await createQuizDoc(data, id);
+    } catch (e) {
+      console.warn('Firestore quiz error: ', e);
     }
     return id;
   };
@@ -1164,12 +1166,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setQuizAttempts((prev) => [...prev.filter((a) => a.id !== attemptId), attempt]);
 
-    if (firebaseUser) {
-      try {
-        await setQuizAttemptDoc(attemptId, attempt);
-      } catch (e) {
-        console.warn('Firestore quiz attempt error: ', e);
-      }
+    try {
+      await setQuizAttemptDoc(attemptId, attempt);
+    } catch (e) {
+      console.warn('Firestore quiz attempt error: ', e);
     }
   };
 
@@ -1538,22 +1538,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const createMeeting = async (title: string, courseCode: string) => {
-    const newMeeting: LiveMeeting = {
-      id: `meet_${Date.now()}`,
-      ownerId: user?.uid || 'user',
-      courseCode,
-      title,
-      active: true,
-    };
-    setMeetings((prev) => [newMeeting, ...prev]);
+  const sendMeetingMessage = async (meetingId: string, text: string) => {
+    if (!text.trim()) return;
+    const sender = user?.name || (user?.role === 'lecturer' ? 'Lecturer' : 'Student');
+    const senderId = user?.uid || auth.currentUser?.uid || 'user';
+    const role = user?.role || 'student';
+    try {
+      await sendMeetingMessageDoc(meetingId, {
+        sender,
+        senderId,
+        role,
+        text: text.trim(),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('sendMeetingMessage error:', e);
+    }
+  };
 
-    if (firebaseUser) {
-      try {
-        await createMeetingDoc(newMeeting);
-      } catch (e) {
-        console.warn('Firestore meeting error: ', e);
-      }
+  const createMeeting = async (
+    titleOrData: string | Omit<LiveMeeting, 'id'>,
+    courseCode?: string
+  ) => {
+    let newMeeting: LiveMeeting;
+    if (typeof titleOrData === 'object') {
+      const id = `meet_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      newMeeting = { ...titleOrData, id };
+    } else {
+      const id = `meet_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      newMeeting = {
+        id,
+        ownerId: user?.uid || 'user',
+        courseCode: courseCode || 'CRS-366',
+        title: titleOrData,
+        active: true,
+      };
+    }
+    setMeetings((prev) => [newMeeting, ...prev.filter((m) => m.id !== newMeeting.id)]);
+    try {
+      await createMeetingDoc(newMeeting, newMeeting.id);
+    } catch (e) {
+      console.warn('Firestore meeting error: ', e);
     }
     return newMeeting.id;
   };
@@ -1612,6 +1637,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addPersonalTask,
         deletePersonalTask,
         createMeeting,
+        sendMeetingMessage,
       }}
     >
       {children}

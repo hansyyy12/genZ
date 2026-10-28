@@ -70,15 +70,15 @@ export const QuizzesView: React.FC = () => {
   const myCourses = isAdmin
     ? courses
     : isLecturer
-    ? courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
+    ? courses.filter((c) => c.ownerId === user?.uid || c.ownerName === user?.name || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'))
     : courses.filter((c) => isEnrolledInCourse(c));
-  const myCourseCodes = new Set(myCourses.map((c) => c.code.toUpperCase()));
 
-  const filteredQuizzes = isAdmin
-    ? quizzes
-    : myCourses.length > 0
-    ? quizzes.filter((q) => myCourseCodes.has(q.courseCode.toUpperCase()))
-    : quizzes;
+  const myNormCodes = new Set(myCourses.map((c) => (c.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase()));
+
+  const filteredQuizzes = quizzes.filter((q) => {
+    const qNorm = (q.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+    return isAdmin || myNormCodes.has(qNorm);
+  });
 
   // Timer countdown while student is taking quiz
   useEffect(() => {
@@ -135,7 +135,7 @@ export const QuizzesView: React.FC = () => {
 
     await createQuiz({
       ownerId: user.uid,
-      courseCode: qCourseCode || myCourses[0]?.code || 'GIS100-X7K',
+      courseCode: qCourseCode || myCourses[0]?.code || 'CRS-366',
       title: qTitle.trim(),
       duration: Number(qDuration) || 20,
       releaseResults: qRelease,

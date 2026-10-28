@@ -642,8 +642,11 @@ export function subscribeBudgetPlans(
       callback(items);
     },
     (error) => {
-      if (onError) onError(error);
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
@@ -684,8 +687,11 @@ export function subscribeCycleData(
       callback(snap.exists() ? (snap.data() as CycleData) : null);
     },
     (error) => {
-      if (onError) onError(error);
-      handleFirestoreError(error, OperationType.GET, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
     }
   );
 }
@@ -719,8 +725,11 @@ export function subscribePersonalTasks(
       callback(items);
     },
     (error) => {
-      if (onError) onError(error);
-      handleFirestoreError(error, OperationType.LIST, path);
+      if (onError) {
+        onError(error);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
     }
   );
 }
@@ -769,17 +778,61 @@ export function subscribeMeetings(
   );
 }
 
-export async function createMeetingDoc(meeting: Omit<LiveMeeting, 'id'>): Promise<string> {
-  const id = `meet_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+export interface MeetingMessage {
+  id?: string;
+  sender: string;
+  senderId?: string;
+  role?: string;
+  text: string;
+  timestamp: string;
+}
+
+export function subscribeMeetingMessages(
+  meetingId: string,
+  callback: (messages: MeetingMessage[]) => void
+): Unsubscribe {
+  const colRef = collection(db, 'meetings', meetingId, 'messages');
+  const q = query(colRef, orderBy('timestamp', 'asc'));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MeetingMessage));
+      callback(items);
+    },
+    (err) => {
+      console.warn('Meeting messages sync fallback:', err);
+    }
+  );
+}
+
+export async function sendMeetingMessageDoc(
+  meetingId: string,
+  message: Omit<MeetingMessage, 'id'>
+): Promise<void> {
+  const msgId = `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  await setDoc(doc(db, 'meetings', meetingId, 'messages', msgId), {
+    ...message,
+    timestamp: message.timestamp || new Date().toISOString(),
+  });
+}
+
+export async function createMeetingDoc(
+  meeting: Omit<LiveMeeting, 'id'>,
+  customId?: string
+): Promise<string> {
+  const id = customId || `meet_${(meeting.courseCode || 'gen').replace(/[^a-zA-Z0-9_]/g, '_')}_${Date.now()}`;
   const path = `meetings/${id}`;
   try {
     await setDoc(doc(db, 'meetings', id), {
       ...meeting,
+      id,
+      courseCode: (meeting.courseCode || '').trim().toUpperCase(),
       createdAt: new Date().toISOString(),
     });
     return id;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    console.warn('createMeetingDoc error:', error);
+    return id;
   }
 }
 

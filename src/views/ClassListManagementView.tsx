@@ -32,7 +32,7 @@ export const ClassListManagementView: React.FC = () => {
   const isAdmin = user?.role === 'admin';
   const myCourses = isAdmin
     ? courses
-    : courses.filter((c) => c.ownerId === user?.uid || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'));
+    : courses.filter((c) => c.ownerId === user?.uid || c.ownerName === user?.name || (!c.ownerId || c.ownerId === 'demo_lecturer_ama_mensah'));
   const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
   const activeCourse = myCourses.find((c) => c.id === selectedCourseId) || myCourses[0];
 
@@ -66,18 +66,24 @@ export const ClassListManagementView: React.FC = () => {
   // Students enrolled in this course
   const classStudents = useMemo(() => {
     if (!activeCourse) return [];
+    const normActive = (activeCourse.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
     return enrollments.filter(
       (e) =>
         e.courseId === activeCourse.id ||
         (Boolean(e.courseCode && activeCourse.code) &&
-          e.courseCode.trim().toUpperCase() === activeCourse.code.trim().toUpperCase())
+          (e.courseCode.trim().toUpperCase() === activeCourse.code.trim().toUpperCase() ||
+           (normActive.length > 0 && (e.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === normActive)))
     );
   }, [enrollments, activeCourse?.id, activeCourse?.code]);
 
   // Course Quizzes
   const courseQuizzes = useMemo(() => {
     if (!activeCourse) return [];
-    return quizzes.filter((q) => q.courseCode.toUpperCase() === activeCourse.code.toUpperCase());
+    const normActive = (activeCourse.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+    return quizzes.filter((q) => {
+      const qNorm = (q.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
+      return qNorm === normActive;
+    });
   }, [quizzes, activeCourse?.code]);
 
   // Calculations for CA and totals

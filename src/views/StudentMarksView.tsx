@@ -21,9 +21,10 @@ export const StudentMarksView: React.FC = () => {
     if (!activeCourse || !activeEnrollment) return null;
 
     const courseCode = activeCourse.code.toUpperCase();
+    const cNorm = (activeCourse.code || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
 
     const courseQuizzes = quizzes
-      .filter((q) => q.courseCode.toUpperCase() === courseCode)
+      .filter((q) => (q.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === cNorm)
       .map((q) => {
         const attempt = quizAttempts.find(
           (a) => a.quizId === q.id && a.studentId === user?.uid && a.submittedAt
@@ -47,10 +48,10 @@ export const StudentMarksView: React.FC = () => {
       });
 
     const courseAssignments = assignments
-      .filter((a) => a.courseCode.toUpperCase() === courseCode)
+      .filter((a) => (a.courseCode || '').replace(/[^A-Z0-9]/g, '').toUpperCase() === cNorm)
       .map((a) => {
         const sub = submissions.find(
-          (s) => s.assignmentId === a.id && s.studentId === user?.uid
+          (s) => s.assignmentId === a.id && (s.studentId === user?.uid || (user?.name && s.studentName === user.name))
         );
         const isGraded = sub?.status === 'Graded' && sub.mark !== null && sub.mark !== undefined;
 

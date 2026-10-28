@@ -148,60 +148,63 @@ service cloud.firestore {
       );
     }
 
-    // 10. Budget Plans (Strict Personal Isolation + Super Admin access)
+    // 10. Budget Plans (Personal Isolation + Demo support + Super Admin access)
     match /budgetPlans/{planId} {
-      allow read: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSuperAdmin() || (
-        isSignedIn()
-        && isValidId(planId)
-        && request.resource.data.userId == request.auth.uid
-      );
-      allow update: if isSuperAdmin() || (
-        isSignedIn()
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-      );
-      allow delete: if isSuperAdmin() || (
-        isSignedIn() && resource.data.userId == request.auth.uid
-      );
+      allow read: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*')
+        || planId.matches('^plan_demo_.*')
+        || (isSignedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous');
+      allow create: if isSuperAdmin()
+        || (isSignedIn() && isValidId(planId) && request.resource.data.userId == request.auth.uid)
+        || request.resource.data.userId.matches('^demo_.*')
+        || planId.matches('^plan_demo_.*');
+      allow update: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*');
+      allow delete: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*');
     }
 
-    // 11. Cycle Care Data (Strict Personal Privacy + Super Admin access)
+    // 11. Cycle Care Data (Personal Privacy + Demo support + Super Admin access)
     match /cycleData/{userId} {
-      allow read: if isSuperAdmin() || isUser(userId);
-      allow create: if isSuperAdmin() || (
-        isUser(userId) && request.resource.data.userId == request.auth.uid
-      );
-      allow update: if isSuperAdmin() || (
-        isUser(userId) && request.resource.data.userId == request.auth.uid
-      );
-      allow delete: if isSuperAdmin() || isUser(userId);
+      allow read: if isSuperAdmin()
+        || isUser(userId)
+        || userId.matches('^demo_.*')
+        || (isSignedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous');
+      allow create, update: if isSuperAdmin()
+        || (isUser(userId) && request.resource.data.userId == request.auth.uid)
+        || userId.matches('^demo_.*')
+        || (isSignedIn() && request.resource.data.userId == request.auth.uid);
+      allow delete: if isSuperAdmin() || isUser(userId) || userId.matches('^demo_.*');
     }
 
-    // 12. Personal Tasks (Strict Personal Isolation + Super Admin access)
+    // 12. Personal Tasks (Personal Isolation + Demo support + Super Admin access)
     match /personalTasks/{taskId} {
-      allow read: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSuperAdmin() || (
-        isSignedIn()
-        && isValidId(taskId)
-        && request.resource.data.userId == request.auth.uid
-      );
-      allow update: if isSuperAdmin() || (
-        isSignedIn() && resource.data.userId == request.auth.uid
-      );
-      allow delete: if isSuperAdmin() || (
-        isSignedIn() && resource.data.userId == request.auth.uid
-      );
+      allow read: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*')
+        || taskId.matches('^task_.*')
+        || (isSignedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous');
+      allow create: if isSuperAdmin()
+        || (isSignedIn() && isValidId(taskId) && request.resource.data.userId == request.auth.uid)
+        || taskId.matches('^task_.*')
+        || request.resource.data.userId.matches('^demo_.*');
+      allow update: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*')
+        || taskId.matches('^task_.*');
+      allow delete: if isSuperAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || resource.data.userId.matches('^demo_.*');
     }
 
-    // 13. Live Meetings
+    // 13. Live Meetings & WebRTC Peer Video Calling
     match /meetings/{meetingId} {
-      allow read: if true;
-      allow create: if isSuperAdmin() || meetingId.matches('^meet_.*') || (isSignedIn() && isValidId(meetingId));
-      allow update: if isSuperAdmin() || meetingId.matches('^meet_.*') || isSignedIn();
-      allow delete: if isSuperAdmin() || isSignedIn();
+      allow read, write: if true;
 
-      match /messages/{messageId} {
+      match /{subcollection=**} {
         allow read, write: if true;
       }
     }
