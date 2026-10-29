@@ -1,10 +1,12 @@
 export type UserRole = 'student' | 'lecturer' | 'admin';
+export type UserGender = 'female' | 'male';
 
 export interface UserProfile {
   uid: string;
   name: string;
   email: string;
   role: UserRole;
+  gender?: UserGender;
   accountId?: string;
   indexNo?: string;
   level?: string;

@@ -37,6 +37,7 @@ export const DEMO_LECTURER: UserProfile = {
   name: 'Dr. Ama Mensah',
   email: 'lecturer@hub.edu',
   role: 'lecturer',
+  gender: 'female',
   phone: '+233 24 112 3456',
   accountId: 'LEC-1001',
   createdAt: '2026-10-01T00:00:00.000Z',
@@ -47,6 +48,7 @@ export const DEMO_STUDENT: UserProfile = {
   name: 'Kofi Mensah',
   email: 'student@hub.edu',
   role: 'student',
+  gender: 'male',
   indexNo: 'UE12345',
   level: 'Level 200',
   accountId: 'STU-201',
@@ -55,10 +57,25 @@ export const DEMO_STUDENT: UserProfile = {
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 
+export const DEMO_STUDENT_FEMALE: UserProfile = {
+  uid: 'demo_student_ama_serwaa',
+  name: 'Ama Serwaa',
+  email: 'amaserwaa@hub.edu',
+  role: 'student',
+  gender: 'female',
+  indexNo: 'UE54321',
+  level: 'Level 200',
+  accountId: 'STU-202',
+  phone: '+233 24 555 7890',
+  code: 'GIS100-X7K',
+  createdAt: '2026-10-01T00:00:00.000Z',
+};
+
 export const DEFAULT_DIRECTORY_USERS: UserProfile[] = [
   SUPER_ADMIN_USER,
   DEMO_LECTURER,
   DEMO_STUDENT,
+  DEMO_STUDENT_FEMALE,
   {
     uid: 'student_serwaa_boakye',
     name: 'Serwaa Boakye',
@@ -102,9 +119,10 @@ interface AuthContextType {
     name: string,
     indexNo?: string,
     level?: string,
-    phone?: string
+    phone?: string,
+    gender?: 'female' | 'male'
   ) => Promise<void>;
-  loginAsDemo: (role: UserRole) => Promise<void>;
+  loginAsDemo: (role: UserRole, gender?: 'female' | 'male') => Promise<void>;
   loginAsAdminDemo: () => Promise<void>;
   loginWithAdminCredentials: (indexNo: string, pass: string) => Promise<void>;
   startImpersonation: (targetUser: UserProfile) => void;
@@ -461,7 +479,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     name: string,
     indexNo?: string,
     level?: string,
-    phone?: string
+    phone?: string,
+    gender?: 'female' | 'male'
   ) => {
     setLoading(true);
     try {
@@ -499,6 +518,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: name.trim() || cleanEmail.split('@')[0],
         email: cleanEmail,
         role: actualRole,
+        gender: gender || (actualRole === 'student' ? 'female' : undefined),
         indexNo: indexNo?.trim() || (actualRole === 'student' ? 'UE' + Math.floor(10000 + Math.random() * 90000) : ''),
         level: level || (actualRole === 'student' ? 'Level 100' : ''),
         phone: phone?.trim() || '',
@@ -523,7 +543,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginAsDemo = async (role: UserRole) => {
+  const loginAsDemo = async (role: UserRole, gender?: 'female' | 'male') => {
     setLoading(true);
     try {
       // Try to sign in anonymously if available for Firestore token
@@ -531,7 +551,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await signInAnonymously(auth);
       } catch {}
 
-      const demo = role === 'lecturer' ? DEMO_LECTURER : DEMO_STUDENT;
+      let demo: UserProfile;
+      if (role === 'lecturer') {
+        demo = DEMO_LECTURER;
+      } else if (gender === 'female') {
+        demo = DEMO_STUDENT_FEMALE;
+      } else {
+        demo = DEMO_STUDENT;
+      }
       setUser(demo);
       localStorage.setItem('lecturehub_session_user', JSON.stringify(demo));
     } finally {

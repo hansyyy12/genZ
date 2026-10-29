@@ -23,6 +23,7 @@ export const AuthScreen: React.FC = () => {
   const [regIndexNo, setRegIndexNo] = useState('');
   const [regLevel, setRegLevel] = useState('Level 200');
   const [regPhone, setRegPhone] = useState('');
+  const [regGender, setRegGender] = useState<'female' | 'male'>('female');
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +60,8 @@ export const AuthScreen: React.FC = () => {
         regName,
         selectedRole === 'student' ? regIndexNo : undefined,
         selectedRole === 'student' ? regLevel : undefined,
-        regPhone
+        regPhone,
+        selectedRole === 'student' ? regGender : undefined
       );
     } catch (err: any) {
       setError(err?.message || 'Registration failed. Please check inputs.');
@@ -68,11 +70,11 @@ export const AuthScreen: React.FC = () => {
     }
   };
 
-  const handleQuickDemo = async (role: UserRole) => {
+  const handleQuickDemo = async (role: UserRole, gender?: 'female' | 'male') => {
     setLoading(true);
     setError(null);
     try {
-      await loginAsDemo(role);
+      await loginAsDemo(role, gender);
     } catch (err: any) {
       setError('Demo login initialization failed: ' + err.message);
     } finally {
@@ -168,22 +170,30 @@ export const AuthScreen: React.FC = () => {
                   </span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => handleQuickDemo('lecturer')}
-                    className="px-3.5 py-2.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-200 text-xs font-bold flex items-center gap-2 transition cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer text-center"
                   >
                     <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                    Dr. Ama Mensah (Lecturer)
+                    <span>Dr. Ama (Lecturer)</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleQuickDemo('student')}
-                    className="px-3.5 py-2.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/40 text-blue-200 text-xs font-bold flex items-center gap-2 transition cursor-pointer"
+                    onClick={() => handleQuickDemo('student', 'female')}
+                    className="px-3 py-2 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 border border-pink-400/50 text-pink-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer text-center"
+                    title="Student with Period Cycle Care Tracker enabled"
                   >
-                    <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
-                    Kofi Mensah (Student)
+                    <span>🌸 Ama (Female)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDemo('student', 'male')}
+                    className="px-3 py-2 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/40 text-blue-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer text-center"
+                    title="Student with Period Cycle Care Tracker hidden"
+                  >
+                    <span>👔 Kofi (Male)</span>
                   </button>
                 </div>
 
@@ -362,6 +372,41 @@ export const AuthScreen: React.FC = () => {
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                {selectedRole === 'student' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>Gender Identification</span>
+                      <span className="text-[10px] text-pink-600 font-bold lowercase">Cycle care is only for females</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setRegGender('female')}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                          regGender === 'female'
+                            ? 'bg-pink-50 border-pink-500 text-pink-700 shadow-xs ring-2 ring-pink-500/20'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-sm">🌸</span>
+                        <span>Female Student</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegGender('male')}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                          regGender === 'male'
+                            ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-sm">👔</span>
+                        <span>Male Student</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>

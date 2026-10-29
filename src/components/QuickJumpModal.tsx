@@ -59,7 +59,9 @@ export const QuickJumpModal: React.FC<QuickJumpModalProps> = ({
         { id: 'student-files', title: 'My Study Files', desc: 'Course slides & study documents', icon: FolderArchive },
         { id: 'student-meet', title: 'Live Video Call', desc: 'Join online lecture room', icon: Video },
         { id: 'budget-tracker', title: 'Budget Tracker 🔥', desc: 'Personal finance & hostel expenses', icon: WalletCards },
-        { id: 'student-cycle', title: 'Period Cycle Care', desc: 'Private menstrual health and fertility tracker', icon: HeartPulse },
+        ...(user?.gender === 'female'
+          ? [{ id: 'student-cycle', title: 'Period Cycle Care 🌸', desc: 'Private menstrual health and fertility tracker', icon: HeartPulse }]
+          : []),
         { id: 'student-settings', title: 'Register Course', desc: 'Enroll into new course with code', icon: PlusCircle },
       ];
 

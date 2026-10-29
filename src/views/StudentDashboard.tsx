@@ -315,42 +315,44 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         {/* Right Column */}
         <div className="space-y-6">
-          {/* Period Cycle Care Widget */}
-          <div className="p-5 md:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                  <HeartPulse className="w-4 h-4 text-rose-500" />
-                  Cycle Care
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Private student reproductive health
-                </p>
+          {/* Period Cycle Care Widget - Only visible to female students */}
+          {user?.gender === 'female' && (
+            <div className="p-5 md:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                    <HeartPulse className="w-4 h-4 text-rose-500" />
+                    Cycle Care
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Private student reproductive health
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 rounded-full">
+                  Protected
+                </span>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 rounded-full">
-                Protected
-              </span>
-            </div>
 
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border border-rose-100 dark:border-rose-900/40 mb-3">
-              <div className="text-xs text-rose-900 dark:text-rose-200 font-bold mb-1">
-                Typical Cycle Length
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border border-rose-100 dark:border-rose-900/40 mb-3">
+                <div className="text-xs text-rose-900 dark:text-rose-200 font-bold mb-1">
+                  Typical Cycle Length
+                </div>
+                <div className="text-2xl font-extrabold text-rose-700 dark:text-rose-300 font-mono">
+                  {cycleData?.cycleLength || 28} Days
+                </div>
+                <small className="text-[11px] text-rose-700/80 dark:text-rose-300/80 block mt-0.5">
+                  Last period logged: {cycleData?.lastStart || 'Not recorded'}
+                </small>
               </div>
-              <div className="text-2xl font-extrabold text-rose-700 dark:text-rose-300 font-mono">
-                {cycleData?.cycleLength || 28} Days
-              </div>
-              <small className="text-[11px] text-rose-700/80 dark:text-rose-300/80 block mt-0.5">
-                Last period logged: {cycleData?.lastStart || 'Not recorded'}
-              </small>
-            </div>
 
-            <button
-              onClick={() => onSelectTab('student-cycle')}
-              className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              Open Cycle Tracker <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+              <button
+                onClick={() => onSelectTab('student-cycle')}
+                className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                Open Cycle Tracker <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Budget Widget */}
           <div className="p-5 md:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">

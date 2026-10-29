@@ -78,7 +78,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'student-files', label: 'My Study Files', icon: FolderArchive },
     { id: 'student-meet', label: 'Live Video Call', icon: Video },
     { id: 'budget-tracker', label: 'Budget Tracker 🔥', icon: WalletCards },
-    { id: 'student-cycle', label: 'Period Cycle Care', icon: HeartPulse },
+    ...(user?.gender === 'female'
+      ? [{ id: 'student-cycle', label: 'Period Cycle Care 🌸', icon: HeartPulse }]
+      : []),
     { id: 'student-settings', label: 'Register Course', icon: PlusCircle },
     { id: 'profile', label: 'Profile & Settings', icon: User },
   ];

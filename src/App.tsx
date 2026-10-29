@@ -51,6 +51,11 @@ const MainAppContent: React.FC = () => {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     try {
       localStorage.setItem('lh_theme', theme);
     } catch {}
@@ -166,7 +171,11 @@ const MainAppContent: React.FC = () => {
 
           {(currentTab === 'lecturer-work' ||
             currentTab === 'student-work' ||
-            currentTab === 'lecturer-subs') && <AssignmentsView />}
+            currentTab === 'lecturer-subs') && (
+            <AssignmentsView
+              initialTab={currentTab === 'lecturer-subs' ? 'submissions' : undefined}
+            />
+          )}
 
           {currentTab === 'student-marks' && <StudentMarksView />}
 
@@ -184,7 +193,37 @@ const MainAppContent: React.FC = () => {
 
           {currentTab === 'budget-tracker' && <BudgetTrackerView />}
 
-          {currentTab === 'student-cycle' && <CycleCareView />}
+          {currentTab === 'student-cycle' && (
+            user?.gender === 'female' ? (
+              <CycleCareView />
+            ) : (
+              <div className="p-8 max-w-md mx-auto text-center rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm mt-8">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-500 text-2xl flex items-center justify-center mb-3">
+                  🌸
+                </div>
+                <h3 className="text-base font-bold text-slate-800 dark:text-white mb-1">
+                  Reserved for Female Scholars
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+                  The Period Cycle Care Tracker is exclusively available to female students. You can review your profile gender setting at any time.
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => handleSelectTab('student-dash')}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Return to Dashboard
+                  </button>
+                  <button
+                    onClick={() => handleSelectTab('profile')}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+                  >
+                    View Profile
+                  </button>
+                </div>
+              </div>
+            )
+          )}
 
           {currentTab === 'profile' && (
             <ProfileView theme={theme} onToggleTheme={toggleTheme} />

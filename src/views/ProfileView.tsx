@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { UserGender } from '../types';
 import {
   User,
   Mail,
@@ -30,6 +31,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ theme, onToggleTheme }
   const [phone, setPhone] = useState(user?.phone || '');
   const [level, setLevel] = useState(user?.level || 'Level 200');
   const [indexNo, setIndexNo] = useState(user?.indexNo || '');
+  const [gender, setGender] = useState<UserGender>(user?.gender || 'female');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -39,6 +41,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ theme, onToggleTheme }
       phone: phone.trim(),
       level,
       indexNo: indexNo.trim(),
+      gender,
     });
     setSavedSuccess(true);
     setEditMode(false);
@@ -134,31 +137,71 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ theme, onToggleTheme }
             </div>
 
             {user?.role === 'student' && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Index Number
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={indexNo}
-                  onChange={(e) => setIndexNo(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Index Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={indexNo}
+                    onChange={(e) => setIndexNo(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Gender Identity & Cycle Care Access
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setGender('female')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                        gender === 'female'
+                          ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-700 dark:text-rose-300 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <span className="text-base">🌸</span>
+                      <div className="text-left">
+                        <div className="font-bold">Female</div>
+                        <div className="text-[10px] font-normal opacity-80">Period Tracker Active</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGender('male')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                        gender === 'male'
+                          ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-700 dark:text-blue-300 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <span className="text-base">👔</span>
+                      <div className="text-left">
+                        <div className="font-bold">Male</div>
+                        <div className="text-[10px] font-normal opacity-80">Period Tracker Hidden</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setEditMode(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300"
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
               >
                 Save Changes
               </button>
@@ -194,6 +237,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ theme, onToggleTheme }
                     {user?.level || 'Level 100'}
                   </span>
                 </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-slate-400 flex items-center gap-2">
+                    <span>👤</span> Gender Identity
+                  </span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    {user?.gender === 'female' ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                        🌸 Female (Cycle Care Active)
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                        👔 Male (Cycle Care Hidden)
+                      </span>
+                    )}
+                  </span>
+                </div>
               </>
             )}
 
@@ -208,8 +268,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ theme, onToggleTheme }
 
             <div className="pt-2">
               <button
-                onClick={() => setEditMode(true)}
-                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition"
+                onClick={() => {
+                  setName(user?.name || '');
+                  setPhone(user?.phone || '');
+                  setLevel(user?.level || 'Level 200');
+                  setIndexNo(user?.indexNo || '');
+                  setGender(user?.gender || 'female');
+                  setEditMode(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit Profile
               </button>
