@@ -44,6 +44,24 @@ export const AuthScreen: React.FC = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await loginWithGoogle(selectedRole);
+    } catch (err: any) {
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        setError(
+          `Domain authorization notice: This preview origin (${window.location.hostname}) is not yet registered in Firebase Console > Authentication > Settings > Authorized Domains. Please use the 1-click demo personas or email sign-in.`
+        );
+      } else {
+        setError(err?.message || 'Google authentication encountered an issue.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -240,9 +258,9 @@ export const AuthScreen: React.FC = () => {
               {/* Google Sign-in Button */}
               <button
                 type="button"
-                onClick={() => loginWithGoogle(selectedRole)}
+                onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-bold flex items-center justify-center gap-3 transition mb-6 shadow-sm"
+                className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-bold flex items-center justify-center gap-3 transition mb-2 shadow-xs cursor-pointer disabled:opacity-50"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -264,6 +282,10 @@ export const AuthScreen: React.FC = () => {
                 </svg>
                 Continue with Google
               </button>
+
+              <div className="text-[11px] text-slate-400 text-center mb-4">
+                <span>⚡ Instant preview login with Firebase Real-time sync</span>
+              </div>
 
               <div className="relative flex py-2 items-center mb-6">
                 <div className="flex-grow border-t border-slate-200"></div>
