@@ -7,13 +7,9 @@ import {
   collection,
   doc,
   setDoc,
-  getDoc,
   deleteDoc,
   onSnapshot,
-  query,
-  where,
   addDoc,
-  serverTimestamp,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -56,6 +52,8 @@ export class WebRTCClassroomManager {
   private onRemoteParticipantUpdate: (participants: RemoteParticipant[]) => void;
   private remoteParticipants: Map<string, RemoteParticipant> = new Map();
   private onConnectionStateChange?: (state: string) => void;
+  // Queue ICE candidates that arrive before remote description is processed
+  private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
 
   constructor(
     meetingId: string,
@@ -74,7 +72,6 @@ export class WebRTCClassroomManager {
 
   public setLocalStream(stream: MediaStream | null) {
     this.localStream = stream;
-    // Replace track on all existing connections
     if (stream) {
       this.peerConnections.forEach((pc) => {
         const senders = pc.getSenders();
@@ -90,22 +87,26 @@ export class WebRTCClassroomManager {
     }
   }
 
+  private getCallId(peerA: string, peerB: string): string {
+    return peerA < peerB ? `${peerA}_to_${peerB}` : `${peerB}_to_${peerA}`;
+  }
+
   /**
    * Join Room: registers presence in Firestore, listens for other peers,
-   * and initiates/answers WebRTC signaling calls.
+   * and negotiates WebRTC connection with bi-directional audio/video.
    */
   public async join(): Promise<void> {
     const peersCol = collection(db, 'meetings', this.meetingId, 'peers');
     const myDocRef = doc(peersCol, this.myPeerId);
 
-    // 1. Announce presence
+    // 1. Announce presence with active microphone/camera status
     try {
       await setDoc(myDocRef, {
         ...this.myInfo,
         updatedAt: new Date().toISOString(),
       });
     } catch (e) {
-      console.warn('Presence write error:', e);
+      console.warn('Presence write notice:', e);
     }
 
     // 2. Listen to peers presence
@@ -136,8 +137,10 @@ export class WebRTCClassroomManager {
           existing.info = data;
         } else {
           this.remoteParticipants.set(peerId, { info: data });
-          // Negotiate WebRTC connection if not yet connected
-          this.connectToPeer(peerId);
+          // Deterministic single initiator: lexicographically lower peer initiates the offer
+          if (this.myPeerId < peerId) {
+            this.initiateCallToPeer(peerId);
+          }
         }
       });
 
@@ -155,18 +158,17 @@ export class WebRTCClassroomManager {
 
     // 3. Listen for incoming call offers directed to me
     const callsCol = collection(db, 'meetings', this.meetingId, 'calls');
-    const unsubCalls = onSnapshot(callsCol, async (snap) => {
+    const unsubCalls = onSnapshot(callsCol, (snap) => {
       snap.docChanges().forEach(async (change) => {
         const callId = change.doc.id;
-        // Call ID is formatted as `${offererId}_to_${answererId}`
-        if (!callId.includes(`_to_${this.myPeerId}`)) return;
+        if (!callId.endsWith(`_to_${this.myPeerId}`)) return;
 
         const data = change.doc.data();
         const offererId = data.offererId;
+        if (!offererId || offererId === this.myPeerId) return;
 
         if (change.type === 'added' || change.type === 'modified') {
           if (data.offer && !data.answer) {
-            // Received an offer, answer it
             await this.handleIncomingOffer(callId, offererId, data.offer);
           }
         }
@@ -176,168 +178,217 @@ export class WebRTCClassroomManager {
   }
 
   /**
-   * Connect to peer: deterministic offerer strategy (lexicographical smaller peerId makes the offer).
+   * Helper to create RTCPeerConnection with audio transceivers and event handlers
    */
-  private async connectToPeer(remotePeerId: string): Promise<void> {
-    if (this.peerConnections.has(remotePeerId)) return;
+  private setupPeerConnection(remotePeerId: string, isInitiator: boolean, callId: string): RTCPeerConnection {
+    let pc = this.peerConnections.get(remotePeerId);
+    if (pc) {
+      return pc;
+    }
 
-    const isOfferer = this.myPeerId < remotePeerId;
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    pc = new RTCPeerConnection(ICE_SERVERS);
     this.peerConnections.set(remotePeerId, pc);
+    this.pendingCandidates.set(remotePeerId, []);
 
-    // Add local tracks
+    // Crucial for bidirectional audio & video: add transceivers so SDP has sendrecv m-lines
+    try {
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+      pc.addTransceiver('video', { direction: 'sendrecv' });
+    } catch {
+      // Fallback if browser does not support Unified Plan transceivers
+    }
+
+    // Attach local audio and video tracks
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, this.localStream!);
+        pc!.addTrack(track, this.localStream!);
       });
     }
 
-    // Handle remote track
+    // Handle receiving remote audio and video tracks
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        const stream = event.streams[0];
-        const participant = this.remoteParticipants.get(remotePeerId);
-        if (participant) {
-          participant.stream = stream;
-          this.notifyParticipants();
+      let stream = event.streams && event.streams[0];
+      const participant = this.remoteParticipants.get(remotePeerId);
+
+      if (!stream) {
+        if (participant?.stream) {
+          stream = participant.stream;
+          if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+            stream.addTrack(event.track);
+          }
+        } else {
+          stream = new MediaStream([event.track]);
         }
+      } else {
+        if (participant?.stream && participant.stream !== stream) {
+          event.streams[0].getTracks().forEach((t) => {
+            if (!participant.stream!.getTracks().some((ex) => ex.id === t.id)) {
+              participant.stream!.addTrack(t);
+            }
+          });
+          stream = participant.stream;
+        }
+      }
+
+      if (participant) {
+        participant.stream = stream;
+        this.notifyParticipants();
       }
     };
 
     pc.onconnectionstatechange = () => {
       if (this.onConnectionStateChange) {
-        this.onConnectionStateChange(pc.connectionState);
+        this.onConnectionStateChange(pc!.connectionState);
       }
     };
 
-    const callId = `${this.myPeerId}_to_${remotePeerId}`;
+    // Send local ICE candidates to the specific candidate sub-collection
     const callDocRef = doc(db, 'meetings', this.meetingId, 'calls', callId);
-
-    // Send ICE candidates
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
-        const candidateCol = collection(callDocRef, isOfferer ? 'callerCandidates' : 'calleeCandidates');
+        const candidateCol = collection(
+          callDocRef,
+          isInitiator ? 'callerCandidates' : 'calleeCandidates'
+        );
         try {
           await addDoc(candidateCol, event.candidate.toJSON());
-        } catch {}
+        } catch (err) {
+          console.warn('ICE candidate dispatch handled:', err);
+        }
       }
     };
 
-    if (isOfferer) {
-      // Offerer creates Offer
-      const offerDescription = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-      });
-      await pc.setLocalDescription(offerDescription);
+    return pc;
+  }
 
-      const offer = {
-        sdp: offerDescription.sdp,
-        type: offerDescription.type,
-      };
+  /**
+   * Initiator creates Offer and sends to Firestore
+   */
+  private async initiateCallToPeer(remotePeerId: string): Promise<void> {
+    const callId = this.getCallId(this.myPeerId, remotePeerId);
+    const pc = this.setupPeerConnection(remotePeerId, true, callId);
 
-      await setDoc(callDocRef, {
-        offererId: this.myPeerId,
-        answererId: remotePeerId,
-        offer,
-        createdAt: new Date().toISOString(),
-      });
+    const callDocRef = doc(db, 'meetings', this.meetingId, 'calls', callId);
 
-      // Listen for Answer
-      const unsubCallDoc = onSnapshot(callDocRef, async (snapshot) => {
-        const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
+    // Create and set local Offer
+    const offerDescription = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
+    await pc.setLocalDescription(offerDescription);
+
+    const offer = {
+      sdp: offerDescription.sdp,
+      type: offerDescription.type,
+    };
+
+    await setDoc(callDocRef, {
+      offererId: this.myPeerId,
+      answererId: remotePeerId,
+      offer,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Listen for remote Answer
+    const unsubAnswer = onSnapshot(callDocRef, async (snapshot) => {
+      const data = snapshot.data();
+      if (data?.answer && !pc.currentRemoteDescription) {
+        try {
           const answerDescription = new RTCSessionDescription(data.answer);
           await pc.setRemoteDescription(answerDescription);
+          await this.drainPendingCandidates(remotePeerId, pc);
+        } catch (err) {
+          console.warn('Set remote answer error:', err);
+        }
+      }
+    });
+    this.unsubs.push(unsubAnswer);
+
+    // Listen for Callee ICE candidates
+    const calleeCandidatesCol = collection(callDocRef, 'calleeCandidates');
+    const unsubCalleeCandidates = onSnapshot(calleeCandidatesCol, (snapshot) => {
+      snapshot.docChanges().forEach(async (change) => {
+        if (change.type === 'added') {
+          const candidateData = change.doc.data();
+          await this.addOrQueueIceCandidate(remotePeerId, pc, candidateData);
         }
       });
-      this.unsubs.push(unsubCallDoc);
+    });
+    this.unsubs.push(unsubCalleeCandidates);
+  }
 
-      // Listen for remote ICE candidates
-      const calleeCandidatesCol = collection(callDocRef, 'calleeCandidates');
-      const unsubCandidates = onSnapshot(calleeCandidatesCol, (snapshot) => {
+  /**
+   * Responder handles incoming offer, sets remote description, and creates Answer
+   */
+  private async handleIncomingOffer(
+    callId: string,
+    offererId: string,
+    offer: RTCSessionDescriptionInit
+  ): Promise<void> {
+    const pc = this.setupPeerConnection(offererId, false, callId);
+    const callDocRef = doc(db, 'meetings', this.meetingId, 'calls', callId);
+
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await this.drainPendingCandidates(offererId, pc);
+
+      const answerDescription = await pc.createAnswer();
+      await pc.setLocalDescription(answerDescription);
+
+      const answer = {
+        type: answerDescription.type,
+        sdp: answerDescription.sdp,
+      };
+
+      await setDoc(callDocRef, { answer }, { merge: true });
+
+      // Listen for Caller ICE candidates
+      const callerCandidatesCol = collection(callDocRef, 'callerCandidates');
+      const unsubCallerCandidates = onSnapshot(callerCandidatesCol, (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added') {
             const candidateData = change.doc.data();
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-            } catch {}
+            await this.addOrQueueIceCandidate(offererId, pc, candidateData);
           }
         });
       });
-      this.unsubs.push(unsubCandidates);
+      this.unsubs.push(unsubCallerCandidates);
+    } catch (err) {
+      console.warn('Error handling incoming offer:', err);
     }
   }
 
   /**
-   * Handle incoming offer from a peer
+   * Safely adds or queues ICE candidate depending on remote description state
    */
-  private async handleIncomingOffer(callId: string, offererId: string, offer: RTCSessionDescriptionInit): Promise<void> {
-    let pc = this.peerConnections.get(offererId);
-    if (!pc) {
-      pc = new RTCPeerConnection(ICE_SERVERS);
-      this.peerConnections.set(offererId, pc);
-
-      if (this.localStream) {
-        this.localStream.getTracks().forEach((track) => {
-          pc!.addTrack(track, this.localStream!);
-        });
+  private async addOrQueueIceCandidate(
+    peerId: string,
+    pc: RTCPeerConnection,
+    candidateData: any
+  ): Promise<void> {
+    if (pc.remoteDescription && pc.remoteDescription.type) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+      } catch (e) {
+        console.warn('addIceCandidate notice:', e);
       }
-
-      pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          const stream = event.streams[0];
-          const participant = this.remoteParticipants.get(offererId);
-          if (participant) {
-            participant.stream = stream;
-            this.notifyParticipants();
-          }
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (this.onConnectionStateChange) {
-          this.onConnectionStateChange(pc!.connectionState);
-        }
-      };
+    } else {
+      const queue = this.pendingCandidates.get(peerId) || [];
+      queue.push(candidateData);
+      this.pendingCandidates.set(peerId, queue);
     }
+  }
 
-    const callDocRef = doc(db, 'meetings', this.meetingId, 'calls', callId);
-
-    // Send callee ICE candidates
-    pc.onicecandidate = async (event) => {
-      if (event.candidate) {
-        const candidateCol = collection(callDocRef, 'calleeCandidates');
-        try {
-          await addDoc(candidateCol, event.candidate.toJSON());
-        } catch {}
+  private async drainPendingCandidates(peerId: string, pc: RTCPeerConnection): Promise<void> {
+    const queue = this.pendingCandidates.get(peerId) || [];
+    for (const cand of queue) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (e) {
+        console.warn('drain candidate notice:', e);
       }
-    };
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answerDescription = await pc.createAnswer();
-    await pc.setLocalDescription(answerDescription);
-
-    const answer = {
-      type: answerDescription.type,
-      sdp: answerDescription.sdp,
-    };
-
-    await setDoc(callDocRef, { answer }, { merge: true });
-
-    // Listen for caller ICE candidates
-    const callerCandidatesCol = collection(callDocRef, 'callerCandidates');
-    const unsubCandidates = onSnapshot(callerCandidatesCol, (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
-          const candidateData = change.doc.data();
-          try {
-            await pc!.addIceCandidate(new RTCIceCandidate(candidateData));
-          } catch {}
-        }
-      });
-    });
-    this.unsubs.push(unsubCandidates);
+    }
+    this.pendingCandidates.set(peerId, []);
   }
 
   /**
@@ -362,6 +413,7 @@ export class WebRTCClassroomManager {
       pc.close();
       this.peerConnections.delete(peerId);
     }
+    this.pendingCandidates.delete(peerId);
   }
 
   /**
@@ -382,6 +434,7 @@ export class WebRTCClassroomManager {
     this.peerConnections.forEach((pc) => pc.close());
     this.peerConnections.clear();
     this.remoteParticipants.clear();
+    this.pendingCandidates.clear();
 
     // 4. Stop local tracks
     if (this.localStream) {

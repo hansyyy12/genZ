@@ -30,6 +30,11 @@ service cloud.firestore {
       );
     }
 
+    // Test connection probe
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // 1. User Profiles
     match /users/{userId} {
       allow read: if true;

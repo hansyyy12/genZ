@@ -32,6 +32,8 @@ import {
   Sparkles,
   Signal,
   Smile,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 export const LiveMeetingView: React.FC = () => {
@@ -126,13 +128,36 @@ export const LiveMeetingView: React.FC = () => {
     return () => clearInterval(interval);
   }, [activeRoom]);
 
-  // Start local media (Camera + Mic) with iOS Safari compatibility
+  // Creates a clean carrier stream if user device has no microphone attached
+  const createCarrierAudioStream = (): MediaStream => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return new MediaStream();
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const dst = ctx.createMediaStreamDestination();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // silent carrier ensures bidirectional audio negotiation
+      osc.connect(gain);
+      gain.connect(dst);
+      osc.start();
+      return dst.stream;
+    } catch {
+      return new MediaStream();
+    }
+  };
+
+  // Start local media (Camera + Mic) with iOS/Android Safari and Desktop compatibility
   const startLocalMedia = async (): Promise<MediaStream | null> => {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
         });
         localStreamRef.current = stream;
         if (localVideoRef.current) {
@@ -146,15 +171,20 @@ export const LiveMeetingView: React.FC = () => {
     } catch (err) {
       console.warn('Camera/mic access unavailable; attempting audio-only:', err);
       try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
         localStreamRef.current = audioStream;
         setCamOn(false);
         setMicOn(true);
         return audioStream;
       } catch {
-        console.warn('Running without hardware media devices.');
+        console.warn('Running with carrier media for listening only.');
+        const carrierStream = createCarrierAudioStream();
+        localStreamRef.current = carrierStream;
         setCamOn(false);
         setMicOn(false);
+        return carrierStream;
       }
     }
     return null;
@@ -968,9 +998,28 @@ export const LiveMeetingView: React.FC = () => {
  */
 const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ participant }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const info = participant?.info;
   const stream = participant?.stream;
 
+  // Bind audio stream to dedicated HTMLAudioElement
+  useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      audioRef.current
+        .play()
+        .then(() => {
+          setAudioBlocked(false);
+        })
+        .catch((err) => {
+          console.warn('Browser autoplay prevented automatic voice playback:', err);
+          setAudioBlocked(true);
+        });
+    }
+  }, [stream]);
+
+  // Bind video stream to HTMLVideoElement (muted to prevent duplicate audio & bypass restrictions)
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
@@ -987,19 +1036,53 @@ const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ p
   const handRaised = Boolean(info?.handRaised);
   const isSharingScreen = Boolean(info?.isSharingScreen);
 
+  const handleManualUnmuteAudio = () => {
+    if (audioRef.current) {
+      audioRef.current
+        .play()
+        .then(() => setAudioBlocked(false))
+        .catch(() => {});
+    }
+  };
+
   return (
-    <div className="relative aspect-video rounded-2xl bg-[#040813] border-2 border-emerald-500/30 overflow-hidden flex items-center justify-center shadow-lg">
+    <div className="relative aspect-video rounded-2xl bg-[#040813] border-2 border-emerald-500/30 overflow-hidden flex items-center justify-center shadow-lg group">
+      {/* 1. Dedicated Remote Audio Player */}
+      <audio ref={audioRef} autoPlay playsInline />
+
+      {/* 2. Remote Video Element (Muted to prevent feedback & avoid autoplay blockage) */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
+        muted
         className={`w-full h-full object-cover ${hasVideoStream && camOn ? 'block' : 'hidden'}`}
       />
 
+      {/* 3. Browser Autoplay Prompt if audio was blocked by browser policy */}
+      {audioBlocked && (
+        <button
+          onClick={handleManualUnmuteAudio}
+          className="absolute z-30 top-3 left-3 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-xl animate-bounce cursor-pointer"
+          title="Click to hear peer audio"
+        >
+          <Volume2 className="w-4 h-4 text-slate-950" />
+          <span>Click to Hear Audio</span>
+        </button>
+      )}
+
+      {/* 4. Fallback Avatar tile if camera is turned off */}
       {(!hasVideoStream || !camOn) && (
         <div className="flex flex-col items-center justify-center gap-2 text-slate-400 p-4 text-center">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border-2 border-emerald-400/60 flex items-center justify-center text-xl font-extrabold text-white shadow-md">
-            {initials}
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border-2 border-emerald-400/60 flex items-center justify-center text-xl font-extrabold text-white shadow-md">
+              {initials}
+            </div>
+            {micOn && (
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center ring-2 ring-slate-900 text-[10px]">
+                🎙️
+              </span>
+            )}
           </div>
           <span className="text-xs font-bold text-white">{name}</span>
           <span className="text-[10px] text-slate-400 capitalize">{role}</span>
@@ -1007,14 +1090,22 @@ const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ p
       )}
 
       {/* Badges on Remote Tile */}
-      <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-xs text-xs font-bold flex items-center gap-1.5 border border-white/10">
+      <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-xs text-xs font-bold flex items-center gap-2 border border-white/10">
         {handRaised && <span className="text-amber-300">✋</span>}
-        <span>{name}</span>
+        <span className="text-white">{name}</span>
         <span className="text-[10px] text-slate-400">({role})</span>
+
         {!micOn ? (
-          <span className="text-rose-400">🔇</span>
+          <span className="text-rose-400 flex items-center gap-1 text-[11px]">
+            <MicOff className="w-3 h-3 text-rose-400" />
+            <span>Muted</span>
+          </span>
         ) : (
-          <span className="text-emerald-400">🎙️</span>
+          <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <Mic className="w-3 h-3 text-emerald-400" />
+            <span>Live Audio</span>
+          </span>
         )}
       </div>
 
