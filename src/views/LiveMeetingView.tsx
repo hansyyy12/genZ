@@ -588,9 +588,9 @@ export const LiveMeetingView: React.FC = () => {
                   {!camOn && (
                     <div className="flex flex-col items-center justify-center gap-2 text-slate-400 p-4 text-center">
                       <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 border-2 border-amber-400/60 flex items-center justify-center text-xl font-extrabold text-white shadow-md">
-                        {user?.name?.slice(0, 2).toUpperCase() || 'YOU'}
+                        {(user?.name || 'YOU').slice(0, 2).toUpperCase()}
                       </div>
-                      <span className="text-xs font-bold text-white">{user?.name} (You)</span>
+                      <span className="text-xs font-bold text-white">{user?.name || 'You'} (You)</span>
                       <span className="text-[10px] text-slate-400">Camera Off</span>
                     </div>
                   )}
@@ -598,7 +598,7 @@ export const LiveMeetingView: React.FC = () => {
                   {/* Badges on Local Tile */}
                   <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-xs text-xs font-bold flex items-center gap-1.5 border border-white/10">
                     {handRaised && <span className="text-amber-300">✋</span>}
-                    <span>{user?.name} (You)</span>
+                    <span>{user?.name || 'You'} (You)</span>
                     {!micOn ? (
                       <span className="text-rose-400">🔇</span>
                     ) : (
@@ -614,8 +614,11 @@ export const LiveMeetingView: React.FC = () => {
                 </div>
 
                 {/* 2. REMOTE PARTICIPANTS TILES (LIVE WEBRTC FEEDS) */}
-                {remoteParticipants.map((p) => (
-                  <RemoteParticipantTile key={p.info.peerId} participant={p} />
+                {remoteParticipants.map((p, idx) => (
+                  <RemoteParticipantTile
+                    key={p?.info?.peerId || `peer_tile_${idx}`}
+                    participant={p}
+                  />
                 ))}
               </div>
             </div>
@@ -660,7 +663,7 @@ export const LiveMeetingView: React.FC = () => {
                       ) : (
                         chatMessages.map((msg, idx) => (
                           <div
-                            key={msg.id || idx}
+                            key={msg.id || `msg_${msg.timestamp || idx}_${idx}`}
                             className={`p-2 rounded-xl border ${
                               msg.senderId === user?.uid
                                 ? 'bg-blue-600/20 border-blue-500/30 ml-3'
@@ -669,7 +672,7 @@ export const LiveMeetingView: React.FC = () => {
                           >
                             <div className="flex items-center justify-between mb-0.5">
                               <span className="font-extrabold text-amber-300 text-[11px]">
-                                {msg.sender} {msg.role === 'lecturer' && '· (Lecturer)'}
+                                {msg.sender || 'Participant'} {msg.role === 'lecturer' && '· (Lecturer)'}
                               </span>
                               <span className="text-[9px] text-slate-400 font-mono">
                                 {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -705,10 +708,10 @@ export const LiveMeetingView: React.FC = () => {
                     <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-extrabold text-white text-[11px]">
-                          {user?.name?.slice(0, 2).toUpperCase() || 'U'}
+                          {(user?.name || 'YOU').slice(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <span className="font-bold text-white block">{user?.name} (You)</span>
+                          <span className="font-bold text-white block">{user?.name || 'You'} (You)</span>
                           <span className="text-[10px] text-slate-400">
                             {isLecturer ? 'Host · Lecturer' : 'Student'}
                           </span>
@@ -721,28 +724,34 @@ export const LiveMeetingView: React.FC = () => {
                     </div>
 
                     {/* Remote Participants */}
-                    {remoteParticipants.map((p) => (
-                      <div
-                        key={p.info.peerId}
-                        className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center font-extrabold text-white text-[11px]">
-                            {p.info.name.slice(0, 2).toUpperCase()}
+                    {remoteParticipants.map((p, idx) => {
+                      const pName = p?.info?.name || 'Classmate';
+                      const pInitials = (pName || 'CL').slice(0, 2).toUpperCase();
+                      const pRole = p?.info?.role || 'student';
+                      const pKey = p?.info?.peerId || `participant_${idx}`;
+                      return (
+                        <div
+                          key={pKey}
+                          className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center font-extrabold text-white text-[11px]">
+                              {pInitials}
+                            </div>
+                            <div>
+                              <span className="font-bold text-white block">{pName}</span>
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                {pRole}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-bold text-white block">{p.info.name}</span>
-                            <span className="text-[10px] text-slate-400 capitalize">
-                              {p.info.role}
-                            </span>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            {p?.info?.handRaised && <span title="Hand Raised">✋</span>}
+                            {p?.info?.micOn ? <span className="text-emerald-400">🎙️</span> : <span className="text-rose-400">🔇</span>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs">
-                          {p.info.handRaised && <span title="Hand Raised">✋</span>}
-                          {p.info.micOn ? <span className="text-emerald-400">🎙️</span> : <span className="text-rose-400">🔇</span>}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -959,7 +968,8 @@ export const LiveMeetingView: React.FC = () => {
  */
 const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ participant }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { info, stream } = participant;
+  const info = participant?.info;
+  const stream = participant?.stream;
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -969,6 +979,13 @@ const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ p
   }, [stream]);
 
   const hasVideoStream = stream && stream.getVideoTracks().some((t) => t.enabled && t.readyState === 'live');
+  const name = info?.name || 'Classmate';
+  const initials = (name || 'CL').slice(0, 2).toUpperCase();
+  const role = info?.role || 'student';
+  const camOn = Boolean(info?.camOn);
+  const micOn = Boolean(info?.micOn);
+  const handRaised = Boolean(info?.handRaised);
+  const isSharingScreen = Boolean(info?.isSharingScreen);
 
   return (
     <div className="relative aspect-video rounded-2xl bg-[#040813] border-2 border-emerald-500/30 overflow-hidden flex items-center justify-center shadow-lg">
@@ -976,32 +993,32 @@ const RemoteParticipantTile: React.FC<{ participant: RemoteParticipant }> = ({ p
         ref={videoRef}
         autoPlay
         playsInline
-        className={`w-full h-full object-cover ${hasVideoStream && info.camOn ? 'block' : 'hidden'}`}
+        className={`w-full h-full object-cover ${hasVideoStream && camOn ? 'block' : 'hidden'}`}
       />
 
-      {(!hasVideoStream || !info.camOn) && (
+      {(!hasVideoStream || !camOn) && (
         <div className="flex flex-col items-center justify-center gap-2 text-slate-400 p-4 text-center">
           <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border-2 border-emerald-400/60 flex items-center justify-center text-xl font-extrabold text-white shadow-md">
-            {info.name.slice(0, 2).toUpperCase()}
+            {initials}
           </div>
-          <span className="text-xs font-bold text-white">{info.name}</span>
-          <span className="text-[10px] text-slate-400 capitalize">{info.role}</span>
+          <span className="text-xs font-bold text-white">{name}</span>
+          <span className="text-[10px] text-slate-400 capitalize">{role}</span>
         </div>
       )}
 
       {/* Badges on Remote Tile */}
       <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-xs text-xs font-bold flex items-center gap-1.5 border border-white/10">
-        {info.handRaised && <span className="text-amber-300">✋</span>}
-        <span>{info.name}</span>
-        <span className="text-[10px] text-slate-400">({info.role})</span>
-        {!info.micOn ? (
+        {handRaised && <span className="text-amber-300">✋</span>}
+        <span>{name}</span>
+        <span className="text-[10px] text-slate-400">({role})</span>
+        {!micOn ? (
           <span className="text-rose-400">🔇</span>
         ) : (
           <span className="text-emerald-400">🎙️</span>
         )}
       </div>
 
-      {info.isSharingScreen && (
+      {isSharingScreen && (
         <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-blue-600 text-[10px] font-bold flex items-center gap-1">
           <Monitor className="w-3 h-3" /> Screen Shared
         </div>

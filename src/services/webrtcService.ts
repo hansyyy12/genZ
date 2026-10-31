@@ -113,17 +113,31 @@ export class WebRTCClassroomManager {
       const activePeerIds = new Set<string>();
 
       snap.docs.forEach((d) => {
-        const data = d.data() as PeerInfo;
-        if (data.peerId === this.myPeerId) return;
+        const raw = d.data();
+        if (!raw) return;
+        const peerId = raw.peerId || d.id;
+        if (!peerId || peerId === this.myPeerId) return;
 
-        activePeerIds.add(data.peerId);
-        const existing = this.remoteParticipants.get(data.peerId);
+        const data: PeerInfo = {
+          peerId,
+          name: raw.name || 'Participant',
+          role: raw.role || 'student',
+          avatar: raw.avatar,
+          micOn: raw.micOn ?? true,
+          camOn: raw.camOn ?? true,
+          handRaised: raw.handRaised ?? false,
+          isSharingScreen: raw.isSharingScreen ?? false,
+          joinedAt: raw.joinedAt || new Date().toISOString(),
+        };
+
+        activePeerIds.add(peerId);
+        const existing = this.remoteParticipants.get(peerId);
         if (existing) {
           existing.info = data;
         } else {
-          this.remoteParticipants.set(data.peerId, { info: data });
+          this.remoteParticipants.set(peerId, { info: data });
           // Negotiate WebRTC connection if not yet connected
-          this.connectToPeer(data.peerId);
+          this.connectToPeer(peerId);
         }
       });
 
