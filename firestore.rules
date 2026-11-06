@@ -56,10 +56,10 @@ service cloud.firestore {
         && isValidId(courseId)
         && request.resource.data.ownerId == request.auth.uid
       );
-      allow update: if isSuperAdmin() || courseId.matches('^course_.*') || (
+      allow update: if isSuperAdmin() || courseId.matches('^course_.*') || courseId.matches('^crs_.*') || (
         isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.token.email == 'hansyyy12@gmail.com')
       );
-      allow delete: if isSuperAdmin() || (
+      allow delete: if isSuperAdmin() || courseId.matches('^course_.*') || courseId.matches('^crs_.*') || (
         isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.token.email == 'hansyyy12@gmail.com')
       );
     }
@@ -71,24 +71,30 @@ service cloud.firestore {
         isSignedIn()
         && request.resource.data.studentId == request.auth.uid
       );
-      allow update: if isSuperAdmin() || enrollmentId.matches('^enroll_.*') || isSignedIn();
-      allow delete: if isSuperAdmin() || (
-        isSignedIn() && (resource.data.studentId == request.auth.uid || request.auth.token.email == 'hansyyy12@gmail.com')
-      );
+      allow update: if isSuperAdmin()
+        || enrollmentId.matches('^enroll_.*')
+        || enrollmentId.matches('^enr_.*')
+        || isSignedIn();
+      allow delete: if isSuperAdmin()
+        || enrollmentId.matches('^enroll_.*')
+        || enrollmentId.matches('^enr_.*')
+        || (
+          isSignedIn() && (resource.data.studentId == request.auth.uid || request.auth.token.email == 'hansyyy12@gmail.com')
+        );
     }
 
     // 4. Announcements
     match /announcements/{announcementId} {
       allow read: if true;
-      allow create: if isSuperAdmin() || announcementId.matches('^ann_.*') || (
+      allow create: if isSuperAdmin() || announcementId.matches('^ann_.*') || announcementId.matches('^announcement_.*') || (
         isSignedIn()
         && isValidId(announcementId)
         && request.resource.data.authorId == request.auth.uid
       );
-      allow update: if isSuperAdmin() || announcementId.matches('^ann_.*') || (
+      allow update: if isSuperAdmin() || announcementId.matches('^ann_.*') || announcementId.matches('^announcement_.*') || (
         isSignedIn() && resource.data.authorId == request.auth.uid
       );
-      allow delete: if isSuperAdmin() || (
+      allow delete: if isSuperAdmin() || announcementId.matches('^ann_.*') || announcementId.matches('^announcement_.*') || (
         isSignedIn() && resource.data.authorId == request.auth.uid
       );
     }
@@ -96,15 +102,15 @@ service cloud.firestore {
     // 5. Assignments
     match /assignments/{assignmentId} {
       allow read: if true;
-      allow create: if isSuperAdmin() || assignmentId.matches('^asg_.*') || (
+      allow create: if isSuperAdmin() || assignmentId.matches('^asg_.*') || assignmentId.matches('^assign_.*') || (
         isSignedIn()
         && isValidId(assignmentId)
         && request.resource.data.ownerId == request.auth.uid
       );
-      allow update: if isSuperAdmin() || assignmentId.matches('^asg_.*') || (
+      allow update: if isSuperAdmin() || assignmentId.matches('^asg_.*') || assignmentId.matches('^assign_.*') || (
         isSignedIn() && resource.data.ownerId == request.auth.uid
       );
-      allow delete: if isSuperAdmin() || (
+      allow delete: if isSuperAdmin() || assignmentId.matches('^asg_.*') || assignmentId.matches('^assign_.*') || (
         isSignedIn() && resource.data.ownerId == request.auth.uid
       );
     }
@@ -112,13 +118,13 @@ service cloud.firestore {
     // 6. Submissions
     match /submissions/{submissionId} {
       allow read: if true;
-      allow create: if isSuperAdmin() || submissionId.matches('^sub_.*') || (
+      allow create: if isSuperAdmin() || submissionId.matches('^sub_.*') || submissionId.matches('^submission_.*') || (
         isSignedIn()
         && isValidId(submissionId)
         && request.resource.data.studentId == request.auth.uid
       );
-      allow update: if isSuperAdmin() || submissionId.matches('^sub_.*') || isSignedIn();
-      allow delete: if isSuperAdmin() || (
+      allow update: if isSuperAdmin() || submissionId.matches('^sub_.*') || submissionId.matches('^submission_.*') || isSignedIn();
+      allow delete: if isSuperAdmin() || submissionId.matches('^sub_.*') || submissionId.matches('^submission_.*') || (
         isSignedIn() && resource.data.studentId == request.auth.uid
       );
     }
